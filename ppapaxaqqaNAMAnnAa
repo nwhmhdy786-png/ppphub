@@ -2554,6 +2554,76 @@ DF:AddToggle("AntiGrabHorrorFlashToggle", {
 	end,
 })
 
+local AntiGrabLagConn = nil
+local LagLinesAmount = 5
+local AntiGrabLagEnabled = false
+
+-- سلايدر اختياري للتحكم بقوة الـ Lag (عدد الخطوط)
+SRVL:AddSlider("AntiGrabLagLines", {
+	Text = "Anti Grab Lag Lines",
+	Default = 5,
+	Min = 1,
+	Max = 10,
+	Rounding = 0,
+	Compact = true,
+	Callback = function(arg)
+		LagLinesAmount = arg
+	end,
+})
+
+SRVL:AddToggle("AntiGrabLagPpl", {
+	Text = "Anti Grab [Lag Ppl for sec when someone grab u]",
+	Default = false,
+	Callback = function(arg)
+		AntiGrabLagEnabled = arg
+
+		if AntiGrabLagConn then
+			AntiGrabLagConn:Disconnect()
+			AntiGrabLagConn = nil
+		end
+
+		if AntiGrabLagEnabled then
+			AntiGrabLagConn = RunService.Stepped:Connect(function()
+				-- الفحص اللحظي: هل تم سحبك؟
+				if LocalPlayer:FindFirstChild("IsHeld") and LocalPlayer.IsHeld.Value then
+					pcall(function()
+						-- إرسال أمر Struggle لكسر القبضة
+						if Struggle and Struggle.FireServer then
+							Struggle:FireServer()
+						end
+
+						-- إطلاق هجوم الـ Line Lag لمدة ثانية واحدة فقط على المهاجم
+						local startTime = tick()
+						while tick() - startTime < 1.0 and LocalPlayer:FindFirstChild("IsHeld") and LocalPlayer.IsHeld.Value and AntiGrabLagEnabled do
+							for i = 1, LagLinesAmount do
+								GrabEvents.CreateGrabLine:FireServer(workspace.SpawnLocation, CFrame.new(-2.3e9, 0, -2.3e9))
+							end
+							task.wait(0.001)
+						end
+					end)
+				end
+			end)
+		end
+	end,
+}):AddKeyPicker("ToggleAntiGrabLagPpl", {
+	Default = "None",
+	Callback = function()
+		local toggleState = not AntiGrabLagEnabled
+		if Toggles and Toggles.AntiGrabLagPpl then
+			Toggles.AntiGrabLagPpl:SetValue(toggleState)
+		end
+
+		if Library and Library.Notify then
+			Library:Notify({ 
+				Title = "Niggerhub", 
+				Description = toggleState and "Anti Grab Lag Ppl ON" or "Anti Grab Lag Ppl OFF", 
+				Time = 1.5, 
+				BigIcon = "info" 
+			})
+		end
+	end,
+})
+
 local AntiGrabConn = nil
 local AntiGrabSpamConn = nil
 
@@ -3040,6 +3110,79 @@ DF:AddToggle("AntiBlobExploiterV3", {
 				Description = toggleState and "Anti Blob Exploiter V3 ON" or "Anti Blob Exploiter V3 OFF",
 				Time = 1.5,
 				BigIcon = "info"
+			})
+		end
+	end,
+})
+
+local AntiRagdollKillEnabled = false
+
+DF:AddToggle("AntiRagdollKillToggle", {
+	Text = "Anti Ragdoll Kill",
+	Default = false,
+	Callback = function(arg)
+		AntiRagdollKillEnabled = arg
+
+		if AntiRagdollKillEnabled then
+			task.spawn(function()
+				while AntiRagdollKillEnabled do
+					pcall(function()
+						-- فحص مجلد الأ toys فوراً لحذف أي أداة قلم (Pencil) أو أداة مشبوهة تحاول عمل Ragdoll
+						for _, toy in ipairs(toysFolder:GetChildren()) do
+							local toyName = toy.Name
+							if toyName == "ToolPencil" or toyName == "RagdollKill" or toyName == "иди нахуй отсюда" then
+								-- فحص ما إذا كانت الأداة قريبة منك أو تخص شخصاً آخر يحاول استهدافك
+								local holdPart = toy:FindFirstChild("HoldPart") or toy:FindFirstChild("StickyPart") or toy:FindFirstChild("SoundPart")
+								if holdPart then
+									local hrp = char and char:FindFirstChild("HumanoidRootPart")
+									if hrp and (hrp.Position - holdPart.Position).Magnitude <= 35 then
+										-- تدمير الأداة فوراً لحمايتك
+										DestroyT(toy)
+									end
+								else
+									-- إذا كانت الأداة بدون أجزاء واضحة أو غريبة يتم تنظيفها احتياطياً
+									DestroyT(toy)
+								end
+							end
+						end
+
+						-- فحص إضافي للقيود (Welds) المرتبطة بشخصيتك
+						local hrp = char and char:FindFirstChild("HumanoidRootPart")
+						if hrp then
+							for _, child in ipairs(hrp:GetChildren()) do
+								if child:IsA("Weld") or child:IsA("WeldConstraint") then
+									local part0 = child.Part0
+									local part1 = child.Part1
+									-- إذا حاول أي شخص ربط أداة غريبة بشخصيتك عبر الـ Weld
+									if (part0 and part0.Parent and part0.Parent.Name ~= LocalPlayer.Name) or 
+									   (part1 and part1.Parent and part1.Parent.Name ~= LocalPlayer.Name) then
+										pcall(function()
+											child:Destroy()
+										end)
+									end
+								end
+							end
+						end
+					end)
+					task.wait(0.05) -- فحص سريع ومستمر لحمايتك بلحظتها
+				end
+			end)
+		end
+	end,
+}):AddKeyPicker("ToggleAntiRagdollKill", {
+	Default = "None",
+	Callback = function()
+		local toggleState = not AntiRagdollKillEnabled
+		if Toggles and Toggles.AntiRagdollKillToggle then
+			Toggles.AntiRagdollKillToggle:SetValue(toggleState)
+		end
+
+		if Library and Library.Notify then
+			Library:Notify({ 
+				Title = "Niggerhub", 
+				Description = toggleState and "Anti Ragdoll Kill ON" or "Anti Ragdoll Kill OFF", 
+				Time = 1.5, 
+				BigIcon = "info" 
 			})
 		end
 	end,
@@ -3673,7 +3816,7 @@ Gucci = function()
 					end
 				elseif AutoGucciEnabled then
 					Library:Notify({
-						Title = "Nil'e",
+						Title = "Niggerhub",
 						Description = "Train Deleted, Gucci Off",
 						Time = 1.5,
 						BigIcon = "info",
@@ -3748,10 +3891,10 @@ CDF:AddToggle("AutoGucci", {
 	Default = "None",
 	Callback = function()
 		if AutoGucciEnabled then
-			Library:Notify({ Title = "Nil'e", Description = "Gucci Off", Time = 1.5, BigIcon = "info" })
+			Library:Notify({ Title = "Niggerhub", Description = "Gucci Off", Time = 1.5, BigIcon = "info" })
 			Toggles.AutoGucci:SetValue(false)
 		else
-			Library:Notify({ Title = "Nil'e", Description = "Gucci On", Time = 1.5, BigIcon = "info" })
+			Library:Notify({ Title = "Niggerhub", Description = "Gucci On", Time = 1.5, BigIcon = "info" })
 			Toggles.AutoGucci:SetValue(true)
 		end
 	end,
@@ -4012,6 +4155,91 @@ DFKT:AddToggle("AntiKickToggle", {
 					end
 				end
 			end
+		end
+	end,
+})
+
+local AntiBypassEnabled = false
+
+DFKT:AddToggle("AntiKickBypassToggle", {
+	Text = "Anti Kick fast",
+	Default = false,
+	Callback = function(arg)
+		AntiBypassEnabled = arg
+
+		task.spawn(function()
+			while AntiBypassEnabled do
+				pcall(function()
+					-- التأكد من وجود PCLD والشخصية
+					if not MyPCLD or not MyPCLD.Parent then
+						MyPCLD = FindMyPCLD()
+					end
+
+					if char and MyPCLD then
+						local _, hrp, humanoid = GetHRH(char)
+						local firePlayerPart = hrp and hrp.Parent:FindFirstChild("FirePlayerPart")
+
+						if humanoid and humanoid.Health > 0 and firePlayerPart then
+							local antiKickToy = toysFolder:FindFirstChild("AntiKick")
+
+							-- 1. لو الأداة غير موجودة (انحذفت أو انسرقت)، ارسبنها فوراً وربطها!
+							if not antiKickToy then
+								if LocalPlayer:FindFirstChild("CanSpawnToy") and LocalPlayer.CanSpawnToy.Value then
+									SpawnToy(AntiKickItem, MyPCLD.CFrame * CFrame.new(AntiKickOffsetX, AntiKickOffsetY, AntiKickOffsetZ))
+									antiKickToy = toysFolder:WaitForChild(AntiKickItem, 0.5)
+									if antiKickToy then
+										antiKickToy.Name = "AntiKick"
+									end
+								end
+							end
+
+							-- 2. لو الأداة موجودة، تأكد من سلامة الـ Weld والارتباط حقها
+							if antiKickToy then
+								local stickyPart = antiKickToy:FindFirstChild("StickyPart")
+								if stickyPart then
+									local stickyWeld = stickyPart:FindFirstChild("StickyWeld")
+
+									-- لو تم قطع الـ Weld أو تم ربطه بشخص غيرك، دمره عشان يرسبن صح من جديد
+									if stickyWeld and stickyWeld.Part1 then
+										local targetPart = stickyWeld.Part1
+										if targetPart ~= firePlayerPart then
+											DestroyT(antiKickToy)
+										end
+									else
+										-- لو مافي weld، قم بإعادة ربطها فوراً بـ FireServer
+										StickyPartEvent:FireServer(stickyPart, firePlayerPart,
+											CFrame.new(AntiKickOffsetX, AntiKickOffsetY, AntiKickOffsetZ) *
+											CFrame.Angles(math.rad(AntiKickRotationX), math.rad(AntiKickRotationY), math.rad(AntiKickRotationZ)))
+									end
+								else
+									DestroyT(antiKickToy)
+								end
+
+								-- 3. فحص مالك الأداة لمنع أي تلاعب خارجي
+								local partOwner = antiKickToy:FindFirstChild("PartOwner", true)
+								if partOwner and partOwner.Value ~= LocalPlayer.Name then
+									DestroyT(antiKickToy)
+									Library:Notify({
+										Title = "Nil'e Protection",
+										Description = "Anti-Kick stolen/removed! Auto-Respawning...",
+										Time = 1,
+										BigIcon = "triangle-alert",
+									})
+								end
+							end
+						end
+					end
+				end)
+				task.wait(0.05) -- فحص سريع ومستمر يضمن بقاء أداتك موجودة ومرتبطة فيك دائماً
+			end
+		end)
+	end,
+}):AddKeyPicker("ToggleAntiKickBypass", {
+	Default = "None",
+	Callback = function()
+		local toggleState = not AntiBypassEnabled
+		if Toggles and Toggles.AntiKickBypassToggle then
+			Toggles.AntiKickBypassToggle:SetValue(toggleState)
 		end
 	end,
 })
@@ -4317,7 +4545,7 @@ DFB:AddSlider("AntiNetTransparencySlider", {
 })
 
 DFB:AddToggle("AntiNetwork", {
-	Text = "Anti Network",
+	Text = "Anti Network Normal",
 	Default = false,
 	Callback = function(arg)
 		if arg then
@@ -4405,6 +4633,103 @@ DFB:AddToggle("AntiNetwork", {
 		end
 	end,
 })
+
+local AntiNet = false
+local antiNetwork = nil
+
+DFB:AddToggle("AntiNetwork", {
+	Text = "Anti Network [Ultra]",
+	Default = false,
+	Callback = function(arg)
+		if arg then
+			AntiNet = true
+
+			task.spawn(function()
+				while AntiNet do
+					pcall(function()
+						local selectedItem = "FoodHamburger"
+						antiNetwork = toysFolder:FindFirstChild("AntiNetwork")
+
+						if not antiNetwork then
+							if LocalPlayer:FindFirstChild("CanSpawnToy") and LocalPlayer.CanSpawnToy.Value then
+								SpawnToy(selectedItem, CFrame.new(52, 228, 67))
+								antiNetwork = toysFolder:WaitForChild(selectedItem, 0.5)
+							end
+						end
+
+						if antiNetwork then
+							antiNetwork.Name = "AntiNetwork"
+							local holdPart = antiNetwork:WaitForChild("HoldPart", 0.5)
+
+							if holdPart then
+								for _, v28 in ipairs(antiNetwork:GetChildren()) do
+									if (v28:IsA("Part") or v28:IsA("MeshPart")) and v28.Transparency ~= 1 then
+										v28.Transparency = 0
+									end
+								end
+
+								local rigidConstraint = holdPart:FindFirstChild("RigidConstraint")
+								local holdItemRemoteFunction = holdPart:FindFirstChild("HoldItemRemoteFunction")
+								local dropItemRemoteFunction = holdPart:FindFirstChild("DropItemRemoteFunction")
+
+								if rigidConstraint and holdItemRemoteFunction and dropItemRemoteFunction then
+									if rigidConstraint.Attachment1 ~= nil and rigidConstraint.Attachment1.Parent and rigidConstraint.Attachment1.Parent.Parent and rigidConstraint.Attachment1.Parent.Parent.Name ~= LocalPlayer.Name then
+										if toysFolder:FindFirstChild("AntiNetwork") then
+											DestroyT(toysFolder:FindFirstChild("AntiNetwork"))
+										end
+									else
+										task.spawn(function()
+											pcall(function()
+												holdItemRemoteFunction:InvokeServer(antiNetwork, char)
+											end)
+										end)
+
+										task.spawn(function()
+											task.wait(0.02)
+											pcall(function()
+												dropItemRemoteFunction:InvokeServer(antiNetwork, CFrame.new(52, 1488, 67), Vector3.zero)
+											end)
+										end)
+									end
+								else
+									if toysFolder:FindFirstChild("AntiNetwork") then
+										DestroyT(toysFolder:FindFirstChild("AntiNetwork"))
+									end
+								end
+							end
+						end
+					end)
+					task.wait(0.05)
+				end
+			end)
+		else
+			AntiNet = false
+
+			if toysFolder:FindFirstChild("AntiNetwork") then
+				DestroyT(toysFolder:FindFirstChild("AntiNetwork"))
+			end
+		end
+	end,
+}):AddKeyPicker("ToggleAntiNetwork", {
+	Default = "None",
+	Callback = function()
+		local toggleState = not AntiNet
+		if Toggles and Toggles.AntiNetwork then
+			Toggles.AntiNetwork:SetValue(toggleState)
+		end
+
+		if Library and Library.Notify then
+			Library:Notify({ 
+				Title = "Niggerhub", 
+				Description = toggleState and "Anti Network ON" or "Anti Network OFF", 
+				Time = 1.5, 
+				BigIcon = "info" 
+			})
+		end
+	end,
+})
+
+
 
 GetPlotToRespawn = function()
 	for _, v27 in workspace.Plots:GetChildren() do
@@ -5608,6 +5933,74 @@ LTRB:AddCheckbox("AutoSitToggle", {
 					end
 				end
 			end
+		end
+	end,
+})
+
+local UnbreakableBlobEnabled = false
+local UnbreakableBlobConn = nil
+
+LTRB:AddCheckbox("UnbreakableBlobToggle", {
+	Text = "Unbreakable Blob",
+	Default = false,
+	Callback = function(arg)
+		UnbreakableBlobEnabled = arg
+
+		if UnbreakableBlobConn then
+			task.cancel(UnbreakableBlobConn)
+			UnbreakableBlobConn = nil
+		end
+
+		if UnbreakableBlobEnabled then
+			UnbreakableBlobConn = task.spawn(function()
+				while UnbreakableBlobEnabled do
+					pcall(function()
+						if char then
+							local v27, v28, v29 = GetHRH(char)
+
+							if v28 and v29 and v29.Health > 0 then
+								local blob = toysFolder:FindFirstChild("CreatureBlobman")
+
+								-- 1. لو الهكر سحبك (Grab) أو تم العبث بالـ Blob وهو موجود، دمره فوراً
+								if blob then
+									local vehicleSeat = blob:FindFirstChild("VehicleSeat")
+									if vehicleSeat then
+										if LocalPlayer:FindFirstChild("IsHeld") and LocalPlayer.IsHeld.Value then
+											DestroyT(blob)
+											task.wait(0.01)
+										else
+											-- تأكيد الجلوس المستمر عليه دائماً
+											vehicleSeat:Sit(v29)
+										end
+									else
+										DestroyT(blob)
+									end
+								else
+									-- 2. لو الـ Blob مو موجود أصلاً (حذفه الهكر أو نزلت)، ارسبن واحد جديد واقعد عليه فوراً برمشة عين!
+									local newBlob = NewToy("CreatureBlobman", v28.CFrame * CFrame.new(0, 15, 20))
+									if newBlob then
+										local vehicleSeat = toysFolder:WaitForChild("CreatureBlobman", 1) and toysFolder.CreatureBlobman:FindFirstChild("VehicleSeat")
+										if vehicleSeat and v29 then
+											vehicleSeat:Sit(v29)
+										else
+											DestroyT(newBlob)
+										end
+									end
+								end
+							end
+						end
+					end)
+					task.wait(0.05) -- فحص فائـق السرعة
+				end
+			end)
+		else
+			-- تنظيف عند الإيقاف
+			pcall(function()
+				local blob = toysFolder:FindFirstChild("CreatureBlobman")
+				if blob then
+					DestroyT(blob)
+				end
+			end)
 		end
 	end,
 })
@@ -12502,10 +12895,10 @@ SRVP:AddToggle("PacketLag", {
 	Default = "None",
 	Callback = function()
 		if PacketLagg then
-			Library:Notify({ Title = "Nil'e", Description = "Packet Lag Off", Time = 1.5, BigIcon = "info" })
+			Library:Notify({ Title = "Niggerhub", Description = "Packet Lag Off", Time = 1.5, BigIcon = "info" })
 			Toggles.PacketLag:SetValue(false)
 		else
-			Library:Notify({ Title = "Nil'e", Description = "Packet Lag On", Time = 1.5, BigIcon = "info" })
+			Library:Notify({ Title = "Niggerhub", Description = "Packet Lag On", Time = 1.5, BigIcon = "info" })
 			Toggles.PacketLag:SetValue(true)
 		end
 	end,
