@@ -886,6 +886,8 @@ GBM:AddToggle("Strength", {
 	end,
 })
 
+
+
 MouseWheelConn = nil
 InfiniteExtendConn = nil
 CurrentDistance = 8
@@ -1008,6 +1010,307 @@ GBM:AddToggle("FartherReachToggle", {
 		end
 	end,
 })
+
+local AutoGamepass = nil
+local FurtherReachBoughtNotifier = ReplicatedStorage.GamepassEvents:FindFirstChild("FurtherReachBoughtNotifier")
+local LimitedTimeToyEvent = ReplicatedStorage.MenuToys:FindFirstChild("LimitedTimeToyEvent")
+
+_G.RopeSpeed = 10
+local FastRopeConn = nil
+
+-- 1. Slider التحكم بالسرعة الفعلية (من 1 إلى 20)
+GBM:AddSlider("RopeSpeedSlider", {
+	Text = "Goon Speed Multiplier (1 - 20)",
+	Default = 10,
+	Min = 1,
+	Max = 20,
+	Rounding = 0,
+	Compact = false,
+	Callback = function(Value)
+		_G.RopeSpeed = Value
+	end,
+})
+
+-- 2. ميزة Farther Reach + التحكم الصاروخي المباشر بالحبل
+GBM:AddToggle("FartherReachToggle", {
+	Text = "Gooner Grab",
+	Default = false,
+	Callback = function(arg)
+		if arg then
+			pcall(function()
+				if LocalPlayer:FindFirstChild("FartherReach") then
+					LocalPlayer:FindFirstChild("FartherReach"):Destroy()
+				end
+
+				local boolValue = Instance.new("BoolValue")
+				boolValue.Name = "FartherReach"
+				boolValue.Value = true
+				boolValue.Parent = LocalPlayer
+
+				if FurtherReachBoughtNotifier and LimitedTimeToyEvent then
+					FurtherReachBoughtNotifier.Parent = nil
+					LimitedTimeToyEvent.Parent = ReplicatedStorage.GamepassEvents
+					LimitedTimeToyEvent.Name = "FurtherReachBoughtNotifier"
+				end
+
+				local grabbingScript = char and char:FindFirstChild("GrabbingScript")
+				if grabbingScript then
+					grabbingScript.Enabled = false
+					grabbingScript.Enabled = true
+					task.wait(0.1)
+					if LimitedTimeToyEvent then
+						LimitedTimeToyEvent:FireServer()
+					end
+					if FurtherReachBoughtNotifier and LimitedTimeToyEvent then
+						FurtherReachBoughtNotifier.Parent = ReplicatedStorage.GamepassEvents
+						LimitedTimeToyEvent.Parent = ReplicatedStorage.MenuToys
+						LimitedTimeToyEvent.Name = "LimitedTimeToyEvent"
+					end
+				end
+			end)
+
+			-- المحرك الجديد للتحكم بالسرعة الفائقة اللحظية
+			if FastRopeConn then FastRopeConn:Disconnect() end
+			local growing = true
+
+			FastRopeConn = RunService.RenderStepped:Connect(function(dt)
+				pcall(function()
+					local grabParts = workspace:FindFirstChild("GrabParts")
+					if grabParts and grabParts:FindFirstChild("DragPart") then
+						-- تسريع مضاعف بناءً على قيمة الـ Slider (تأثير مباشر جداً)
+						local stepSpeed = (_G.RopeSpeed or 10) * 15 * dt
+						
+						if not _G.distance then _G.distance = 10 end
+
+						if growing then
+							_G.distance = _G.distance + stepSpeed
+							if _G.distance >= 30 then
+								_G.distance = 30
+								growing = false
+							end
+						else
+							_G.distance = _G.distance - stepSpeed
+							if _G.distance <= 3 then
+								_G.distance = 3
+								growing = true
+							end
+						end
+
+						-- إجبار الـ DragPart على التحرك فورياً أمام الكاميرا بالمسافة الجديدة
+						local cam = workspace.CurrentCamera
+						grabParts.DragPart.Position = cam.CFrame.Position + (cam.CFrame.LookVector * _G.distance)
+
+						-- إرسال التحديث للسيرفر
+						local extendRemote = ReplicatedStorage:FindFirstChild("GrabEvents") and ReplicatedStorage.GrabEvents:FindFirstChild("ExtendGrabLine")
+						if extendRemote then
+							extendRemote:FireServer(_G.distance)
+						end
+					end
+				end)
+			end)
+
+			-- التحديث التلقائي عند موت الشخصية وإعادتها
+			AutoGamepass = LocalPlayer.CharacterAdded:Connect(function(character)
+				pcall(function()
+					if FurtherReachBoughtNotifier and LimitedTimeToyEvent then
+						FurtherReachBoughtNotifier.Parent = nil
+						LimitedTimeToyEvent.Parent = ReplicatedStorage.GamepassEvents
+						LimitedTimeToyEvent.Name = "FurtherReachBoughtNotifier"
+					end
+
+					local grabbingScript2 = character:WaitForChild("GrabbingScript", 2)
+					if grabbingScript2 then
+						grabbingScript2.Enabled = false
+						grabbingScript2.Enabled = true
+						task.wait(0.1)
+						if LimitedTimeToyEvent then
+							LimitedTimeToyEvent:FireServer()
+						end
+					end
+
+					if FurtherReachBoughtNotifier and LimitedTimeToyEvent then
+						FurtherReachBoughtNotifier.Parent = ReplicatedStorage.GamepassEvents
+						LimitedTimeToyEvent.Parent = ReplicatedStorage.MenuToys
+						LimitedTimeToyEvent.Name = "LimitedTimeToyEvent"
+					end
+				end)
+			end)
+		else
+			pcall(function()
+				if FurtherReachBoughtNotifier and LimitedTimeToyEvent then
+					FurtherReachBoughtNotifier.Parent = ReplicatedStorage.GamepassEvents
+					LimitedTimeToyEvent.Parent = ReplicatedStorage.MenuToys
+					LimitedTimeToyEvent.Name = "LimitedTimeToyEvent"
+				end
+
+				if LocalPlayer:FindFirstChild("FartherReach") then
+					LocalPlayer:FindFirstChild("FartherReach"):Destroy()
+				end
+
+				local grabbingScript = char and char:FindFirstChild("GrabbingScript")
+				if grabbingScript then
+					grabbingScript.Enabled = false
+					grabbingScript.Enabled = true
+				end
+			end)
+
+			if FastRopeConn then
+				FastRopeConn:Disconnect()
+				FastRopeConn = nil
+			end
+
+			if AutoGamepass then
+				AutoGamepass:Disconnect()
+				AutoGamepass = nil
+			end
+		end
+	end,
+})
+
+local AutoGamepass = nil
+local FurtherReachBoughtNotifier = ReplicatedStorage.GamepassEvents:FindFirstChild("FurtherReachBoughtNotifier")
+local LimitedTimeToyEvent = ReplicatedStorage.MenuToys:FindFirstChild("LimitedTimeToyEvent")
+
+_G.RopeSpeed = 15
+local CustomDistanceConn = nil
+
+-- 1. Slider التحكم بسرعة التمديد والتقصير (من 1 إلى 30)
+GBM:AddSlider("RopeSpeedSlider", {
+	Text = "Extend/Retract Speed (1 - 30)",
+	Default = 15,
+	Min = 1,
+	Max = 30,
+	Rounding = 0,
+	Compact = false,
+	Callback = function(Value)
+		_G.RopeSpeed = Value
+	end,
+})
+
+-- 2. تفعيل Farther Reach + تسريع أزرار التحكم بالمسافة (ZoomIn / ZoomOut / MouseWheel)
+GBM:AddToggle("FartherReachToggle", {
+	Text = "Extand speed",
+	Default = false,
+	Callback = function(arg)
+		if arg then
+			pcall(function()
+				if LocalPlayer:FindFirstChild("FartherReach") then
+					LocalPlayer.FartherReach:Destroy()
+				end
+
+				local boolValue = Instance.new("BoolValue")
+				boolValue.Name = "FartherReach"
+				boolValue.Value = true
+				boolValue.Parent = LocalPlayer
+
+				if FurtherReachBoughtNotifier and LimitedTimeToyEvent then
+					FurtherReachBoughtNotifier.Parent = nil
+					LimitedTimeToyEvent.Parent = ReplicatedStorage.GamepassEvents
+					LimitedTimeToyEvent.Name = "FurtherReachBoughtNotifier"
+				end
+
+				local grabbingScript = char and char:FindFirstChild("GrabbingScript")
+				if grabbingScript then
+					grabbingScript.Enabled = false
+					grabbingScript.Enabled = true
+					task.wait(0.1)
+					if LimitedTimeToyEvent then
+						LimitedTimeToyEvent:FireServer()
+					end
+					if FurtherReachBoughtNotifier and LimitedTimeToyEvent then
+						FurtherReachBoughtNotifier.Parent = ReplicatedStorage.GamepassEvents
+						LimitedTimeToyEvent.Parent = ReplicatedStorage.MenuToys
+						LimitedTimeToyEvent.Name = "FurtherReachBoughtNotifier"
+					end
+				end
+			end)
+
+			-- التسريع الفائق لاستجابة تغيير المسافة عند المد والسحب اليدوي
+			if CustomDistanceConn then CustomDistanceConn:Disconnect() end
+			
+			CustomDistanceConn = UserInputService.InputChanged:Connect(function(input, gpe)
+				if gpe then return end
+				pcall(function()
+					if workspace:FindFirstChild("GrabParts") and _G.distance then
+						local speedFactor = (_G.RopeSpeed or 15) / 5
+						
+						-- مد أو سحب بالماوس / اللمس بسرعة عالية
+						if input.UserInputType == Enum.UserInputType.MouseWheel then
+							if input.Position.Z > 0 then
+								_G.distance = math.clamp(_G.distance + speedFactor, 3, 30)
+							elseif input.Position.Z < 0 then
+								_G.distance = math.clamp(_G.distance - speedFactor, 3, 30)
+							end
+
+							local extendRemote = ReplicatedStorage:FindFirstChild("GrabEvents") and ReplicatedStorage.GrabEvents:FindFirstChild("ExtendGrabLine")
+							if extendRemote then
+								extendRemote:FireServer(_G.distance)
+							end
+						end
+					end
+				end)
+			end)
+
+			-- التحديث عند الموت
+			AutoGamepass = LocalPlayer.CharacterAdded:Connect(function(character)
+				pcall(function()
+					if FurtherReachBoughtNotifier and LimitedTimeToyEvent then
+						FurtherReachBoughtNotifier.Parent = nil
+						LimitedTimeToyEvent.Parent = ReplicatedStorage.GamepassEvents
+						LimitedTimeToyEvent.Name = "FurtherReachBoughtNotifier"
+					end
+
+					local grabbingScript2 = character:WaitForChild("GrabbingScript", 2)
+					if grabbingScript2 then
+						grabbingScript2.Enabled = false
+						grabbingScript2.Enabled = true
+						task.wait(0.1)
+						if LimitedTimeToyEvent then
+							LimitedTimeToyEvent:FireServer()
+						end
+					end
+
+					if FurtherReachBoughtNotifier and LimitedTimeToyEvent then
+						FurtherReachBoughtNotifier.Parent = ReplicatedStorage.GamepassEvents
+						LimitedTimeToyEvent.Parent = ReplicatedStorage.MenuToys
+						LimitedTimeToyEvent.Name = "FurtherReachBoughtNotifier"
+					end
+				end)
+			end)
+		else
+			-- تم إصلاح الخطأ هنا وإزالة الكلمة الزائدة
+			pcall(function()
+				if FurtherReachBoughtNotifier and LimitedTimeToyEvent then
+					FurtherReachBoughtNotifier.Parent = ReplicatedStorage.GamepassEvents
+					LimitedTimeToyEvent.Parent = ReplicatedStorage.MenuToys
+					LimitedTimeToyEvent.Name = "FurtherReachBoughtNotifier"
+				end
+
+				if LocalPlayer:FindFirstChild("FartherReach") then
+					LocalPlayer.FartherReach:Destroy()
+				end
+
+				local grabbingScript = char and char:FindFirstChild("GrabbingScript")
+				if grabbingScript then
+					grabbingScript.Enabled = false
+					grabbingScript.Enabled = true
+				end
+			end)
+
+			if CustomDistanceConn then
+				CustomDistanceConn:Disconnect()
+				CustomDistanceConn = nil
+			end
+
+			if AutoGamepass then
+				AutoGamepass:Disconnect()
+				AutoGamepass = nil
+			end
+		end
+	end,
+})
+
+
 
 KillGrabConn = nil
 
@@ -2726,6 +3029,122 @@ DF:AddToggle("AntiGrabToggle", {
 	end,
 })
 
+local AntiGrabEnabled = false
+local savedCFrame = nil -- لتخزين مكانك الأصلي قبل السحب
+
+DF:AddToggle("AntiGrabToggle", {
+	Text = "Anti Grab (Exploiter) Anchor OON", 
+	Default = false,
+	Callback = function(arg)
+		AntiGrabEnabled = arg
+
+		-- تنظيف أي اتصال قديم لمنع التعليق
+		if AntiGrabConn then
+			AntiGrabConn:Disconnect()
+			AntiGrabConn = nil
+		end
+		if AntiGrabSpamConn then
+			AntiGrabSpamConn:Disconnect()
+			AntiGrabSpamConn = nil
+		end
+
+		if AntiGrabEnabled then
+			-- 1. مراقبة مستمرة وفائقة السرعة عبر الـ Stepped لمنع أي Fling أو Kick
+			AntiGrabConn = RunService.Stepped:Connect(function()
+				if not char then return end
+
+				local success, v27, v28, v29 = pcall(GetHRH, char)
+				if not success or not v28 or not v29 or v29.Health <= 0 then return end
+
+				local rootPart = v28:FindFirstChild("HumanoidRootPart") or v28
+				if rootPart then
+					pcall(function()
+						-- تصفير السرعات الخيالية لمنع الـ Kick من الـ Anti-Cheat
+						if rootPart.AssemblyLinearVelocity.Magnitude > 80 then
+							rootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+						end
+						if rootPart.AssemblyAngularVelocity.Magnitude > 30 then
+							rootPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+						end
+					end)
+				end
+
+				-- التحقق مما إذا تم عمل Grab أو Hold لك
+				if LocalPlayer:FindFirstChild("IsHeld") and LocalPlayer.IsHeld.Value then
+					pcall(function()
+						-- حفظ مكانك الأصلي أول ما يتم مسكك (لو مو محفوض من قبل)
+						if not savedCFrame and rootPart then
+							savedCFrame = rootPart.CFrame
+						end
+
+						-- استخدام الـ Anchor لكسر القبضة
+						rootPart.Anchored = true
+						if Struggle and Struggle.FireServer then
+							Struggle:FireServer()
+						end
+					end)
+
+					task.wait()
+
+					pcall(function()
+						if rootPart and rootPart.Parent then
+							rootPart.Anchored = false
+						end
+					end)
+
+					if AntiGrabMode == "Ragdoll" and v29:FindFirstChild("Ragdolled") and not v29.Ragdolled.Value then
+						pcall(function()
+							ReplicatedStorage.CharacterEvents.RagdollRemote:FireServer(v28, 0)
+						end)
+					end
+				else
+					-- لو فكت المسكة وكان فيه مكان محفوظ، رجعنا له فوراً وصفر المكان
+					if savedCFrame and rootPart then
+						pcall(function()
+							rootPart.CFrame = savedCFrame
+						end)
+						savedCFrame = nil
+					end
+				end
+			end)
+
+			-- 2. حماية إضافية ضد الـ Spam Grab لتدمير أي أداة ربط أو Weld وهمي يضعها الهكر عليك
+			AntiGrabSpamConn = RunService.Heartbeat:Connect(function()
+				if not char then return end
+				pcall(function()
+					for _, descendant in ipairs(char:GetDescendants()) do
+						if descendant:IsA("Weld") or descendant:IsA("WeldConstraint") or descendant:IsA("BinaryStringValue") then
+							if descendant.Name ~= "RootJoint" and descendant.Name ~= "Neck" then
+								descendant:Destroy()
+							end
+						end
+					end
+				end)
+			end)
+		else
+			-- تصفير المكان لو طفيت التوغل يدوياً
+			savedCFrame = nil
+		end
+	end,
+}):AddKeyPicker("ToggleAntiGrab", {
+	Default = "None",
+	Callback = function()
+		local toggleState = not AntiGrabEnabled
+		if Toggles and Toggles.AntiGrabToggle then
+			Toggles.AntiGrabToggle:SetValue(toggleState)
+		end
+
+		if Library and Library.Notify then
+			Library:Notify({ 
+				Title = "Niggerhub", 
+				Description = toggleState and "Anti Grab ON" or "Anti Grab OFF", 
+				Time = 1.5, 
+				BigIcon = "info" 
+			})
+		end
+	end,
+})
+
 local AntiGrabV2Conn = nil
 local AntiGrabV2SpamConn = nil
 local OwnerProtectV2Conn = nil
@@ -2847,6 +3266,1203 @@ DF:AddToggle("AntiGrabV2Toggle", {
 	end,
 })
 
+local AntiGrabV2Enabled = false
+local savedCFrame = nil -- لتخزين مكانك الأصلي قبل السحب
+
+DF:AddToggle("AntiGrabV2Toggle", {
+	Text = "Anti Grab Exploiter V2 anchor",
+	Default = false,
+	Callback = function(arg)
+		AntiGrabV2Enabled = arg
+
+		-- تنظيف الاتصالات القديمة لمنع التداخل
+		if AntiGrabV2Conn then AntiGrabV2Conn:Disconnect() AntiGrabV2Conn = nil end
+		if AntiGrabV2SpamConn then AntiGrabV2SpamConn:Disconnect() AntiGrabV2SpamConn = nil end
+		if OwnerProtectV2Conn then OwnerProtectV2Conn:Disconnect() OwnerProtectV2Conn = nil end
+
+		if AntiGrabV2Enabled then
+			-- 1. الفحص الأساسي الأصلي (الـ Anchor و Struggle لكسر القبضة وحفظ/إرجاع الموقع)
+			AntiGrabV2Conn = RunService.Stepped:Connect(function()
+				if not char then return end
+				local v27, v28, v29 = GetHRH(char)
+				if not v27 or not v28 or not v29 or v29.Health <= 0 then
+					return
+				end
+
+				local rootPart = v28:FindFirstChild("HumanoidRootPart") or v28
+
+				if LocalPlayer:FindFirstChild("IsHeld") and LocalPlayer.IsHeld.Value then
+					-- حفظ مكانك الأصلي أول ما يتم مسكك (لو مو محفوض من قبل)
+					pcall(function()
+						if not savedCFrame and rootPart then
+							savedCFrame = rootPart.CFrame
+						end
+					end)
+
+					-- حماية السرعة لمنع الكيك أثناء الـ Grab أو التلاعب بالفيزياء
+					pcall(function()
+						if rootPart then
+							if rootPart.AssemblyLinearVelocity.Magnitude > 70 then
+								rootPart.AssemblyLinearVelocity = Vector3.zero
+							end
+							if rootPart.AssemblyAngularVelocity.Magnitude > 20 then
+								rootPart.AssemblyAngularVelocity = Vector3.zero
+							end
+						end
+					end)
+
+					v28.Anchored = true
+					if Struggle and Struggle.FireServer then
+						Struggle:FireServer()
+					end
+					task.wait()
+					v28.Anchored = false
+
+					if AntiGrabMode == "Ragdoll" and v29:FindFirstChild("Ragdolled") and not v29.Ragdolled.Value then
+						ReplicatedStorage.CharacterEvents.RagdollRemote:FireServer(v28, 0)
+					elseif AntiGrabMode == "Tractor Escape" then
+						local tractorGreen = toysFolder:FindFirstChild("TractorGreen") or
+						NewToy("TractorGreen", CFrame.new(300, 30, 500))
+
+						if tractorGreen then
+							local vehicleSeat = tractorGreen:WaitForChild("VehicleSeat", 1)
+
+							if vehicleSeat and vehicleSeat.Parent and not vehicleSeat.Occupant and v29 and v29.Health > 0 then
+								while task.wait() and AntiGrabV2Enabled and AntiGrabMode == "Tractor Escape" and vehicleSeat and vehicleSeat.Parent and not vehicleSeat.Occupant and v29 and v29.Parent and v29.Health > 0 do
+									vehicleSeat:Sit(v29)
+								end
+
+								if v29 and v29.Parent and v29.Health > 0 and vehicleSeat and vehicleSeat.Parent and vehicleSeat.Occupant and vehicleSeat.Occupant == v29 then
+									DestroyT(tractorGreen)
+									v29.Sit = true
+								end
+							else
+								DestroyT(tractorGreen)
+							end
+						end
+					end
+				else
+					-- لو فكت المسكة وكان فيه مكان محفوظ، رجعنا له فوراً وصفر المكان
+					if savedCFrame and rootPart then
+						pcall(function()
+							rootPart.CFrame = savedCFrame
+						end)
+						savedCFrame = nil
+					end
+				end
+			end)
+
+			-- 2. حماية ملكية الشبكة (Network Ownership) لمنع الهكر من التحكم بأجزائك عبر الشبكة
+			OwnerProtectV2Conn = RunService.Heartbeat:Connect(function()
+				if not char then return end
+				pcall(function()
+					for _, part in ipairs(char:GetDescendants()) do
+						if part:IsA("BasePart") and part:CanSetNetworkOwnership() then
+							part:SetNetworkOwner(LocalPlayer)
+						end
+					end
+				end)
+			end)
+
+			-- 3. تدمير أدوات الربط والـ Welds الوهمية الخاصة بالـ Spam Grab
+			AntiGrabV2SpamConn = RunService.Heartbeat:Connect(function()
+				if not char then return end
+				pcall(function()
+					for _, descendant in ipairs(char:GetDescendants()) do
+						if descendant:IsA("Weld") or descendant:IsA("WeldConstraint") or descendant:IsA("BinaryStringValue") then
+							if descendant.Name ~= "RootJoint" and descendant.Name ~= "Neck" then
+								descendant:Destroy()
+							end
+						end
+					end
+				end)
+			end)
+		else
+			-- تصفير المكان لو طفيت التوغل يدوياً
+			savedCFrame = nil
+		end
+	end,
+}):AddKeyPicker("ToggleAntiGrabV2", {
+	Default = "None",
+	Callback = function()
+		local toggleState = not AntiGrabV2Enabled
+		if Toggles and Toggles.AntiGrabV2Toggle then
+			Toggles.AntiGrabV2Toggle:SetValue(toggleState)
+		end
+
+		if Library and Library.Notify then
+			Library:Notify({ 
+				Title = "Niggerhub", 
+				Description = toggleState and "Anti Grab Exploiter V2 ON" or "Anti Grab Exploiter V2 OFF", 
+				Time = 1.5, 
+				BigIcon = "info" 
+			})
+		end
+	end,
+})
+
+local AntiGrabV5Enabled = false
+local savedCFrame = nil -- لتخزين مكانك الأصلي بدقة عالية
+
+DF:AddToggle("AntiGrabV5Toggle", {
+	Text = "Anti Grab Exploiter V5",
+	Default = false,
+	Callback = function(arg)
+		AntiGrabV5Enabled = arg
+
+		-- تنظيف الاتصالات القديمة بالكامل لمنع التداخل أو الـ Lag
+		if AntiGrabV5Conn then AntiGrabV5Conn:Disconnect() AntiGrabV5Conn = nil end
+		if NetManipV5Conn then NetManipV5Conn:Disconnect() NetManipV5Conn = nil end
+		if ExploiterDestroyerV5Conn then ExploiterDestroyerV5Conn:Disconnect() ExploiterDestroyerV5Conn = nil end
+
+		if AntiGrabV5Enabled then
+			-- 1. الفحص الأساسي الفائق: الـ Anchor، Struggle، وتثبيت الإحداثيات والهروب
+			AntiGrabV5Conn = RunService.Stepped:Connect(function()
+				if not char then return end
+				local v27, v28, v29 = GetHRH(char)
+				if not v27 or not v28 or not v29 or v29.Health <= 0 then
+					return
+				end
+
+				local rootPart = v28:FindFirstChild("HumanoidRootPart") or v28
+
+				if LocalPlayer:FindFirstChild("IsHeld") and LocalPlayer.IsHeld.Value then
+					-- حفظ الموقع الأصلي فور حدوث المسكة وبدقة تامة
+					pcall(function()
+						if not savedCFrame and rootPart then
+							savedCFrame = rootPart.CFrame
+						end
+					end)
+
+					-- منع الـ Fling والسرعات الخيالية لمنع الكيك
+					pcall(function()
+						if rootPart then
+							if rootPart.AssemblyLinearVelocity.Magnitude > 60 then
+								rootPart.AssemblyLinearVelocity = Vector3.zero
+							end
+							if rootPart.AssemblyAngularVelocity.Magnitude > 15 then
+								rootPart.AssemblyAngularVelocity = Vector3.zero
+							end
+						end
+					end)
+
+					-- كسر القبضة بقوة
+					pcall(function()
+						v28.Anchored = true
+						if Struggle and Struggle.FireServer then
+							Struggle:FireServer()
+						end
+					end)
+
+					task.wait()
+
+					pcall(function()
+						v28.Anchored = false
+					end)
+
+					if AntiGrabMode == "Ragdoll" and v29:FindFirstChild("Ragdolled") and not v29.Ragdolled.Value then
+						ReplicatedStorage.CharacterEvents.RagdollRemote:FireServer(v28, 0)
+					end
+				else
+					-- أول ما تفك المسكة، يرجّعك السكريبت لمكانك الأصلي فوراً وبدقة
+					if savedCFrame and rootPart then
+						pcall(function()
+							rootPart.CFrame = savedCFrame
+						end)
+						savedCFrame = nil
+					end
+				end
+			end)
+
+			-- 2. Anti Network Manipulation (حماية صارمة لملكية الشبكة ومنع سرقة الـ Parts)
+			NetManipV5Conn = RunService.Heartbeat:Connect(function()
+				if not char then return end
+				pcall(function()
+					for _, part in ipairs(char:GetDescendants()) do
+						if part:IsA("BasePart") and part:CanSetNetworkOwnership() then
+							pcall(function()
+								if part.NetworkOwner ~= LocalPlayer then
+									part:SetNetworkOwner(LocalPlayer)
+								end
+							end)
+						end
+					end
+				end)
+			end)
+
+			-- 3. Anti Exploiter Destroyer (كشف وتدمير أي Weld مريب، أداة هجومية، أو محاولة تلصيق من هكر)
+			ExploiterDestroyerV5Conn = RunService.Heartbeat:Connect(function()
+				if not char then return end
+				pcall(function()
+					local rootPart = char:FindFirstChild("HumanoidRootPart")
+					
+					-- فحص وتدمير الروابط والأدوات الوهمية داخل الشخصية
+					for _, desc in ipairs(char:GetDescendants()) do
+						if desc:IsA("Weld") or desc:IsA("WeldConstraint") or desc:IsA("BinaryStringValue") or desc:IsA("Attachment") then
+							if desc.Name ~= "RootJoint" and desc.Name ~= "Neck" and desc.Name ~= "RightShoulder" and desc.Name ~= "LeftShoulder" and desc.Name ~= "RightHip" and desc.Name ~= "LeftHip" then
+								if desc.Part0 and desc.Part1 then
+									local otherPart = (desc.Part0.Parent == char) and desc.Part1 or desc.Part0
+									if otherPart and otherPart.Parent and otherPart.Parent ~= char and otherPart.Parent ~= workspace then
+										desc:Destroy()
+										if otherPart.Parent and otherPart.Parent:IsA("Tool") then
+											otherPart.Parent:Destroy()
+										elseif otherPart then
+											otherPart:Destroy()
+										end
+									end
+								end
+							end
+						end
+					end
+
+					-- رصد وتدمير أي جسم مشبوه يقترب منك بشكل عدائي في الـ Workspace
+					if rootPart then
+						for _, obj in ipairs(workspace:GetChildren()) do
+							if obj:IsA("Model") and obj ~= char then
+								local handle = obj:FindFirstChild("Handle") or obj:FindFirstChildWhichIsA("BasePart")
+								if handle then
+									local dist = (handle.Position - rootPart.Position).Magnitude
+									if dist < 4 and (obj:FindFirstChild("TouchInterest") or obj.Name:lower():find("grab") or obj.Name:lower():find("tool") or obj.Name:lower():find("part")) then
+										obj:Destroy()
+									end
+								end
+							end
+						end
+					end
+				end)
+			end)
+		else
+			savedCFrame = nil
+		end
+	end,
+}):AddKeyPicker("ToggleAntiGrabV5", {
+	Default = "None",
+	Callback = function()
+		local toggleState = not AntiGrabV5Enabled
+		if Toggles and Toggles.AntiGrabV5Toggle then
+			Toggles.AntiGrabV5Toggle:SetValue(toggleState)
+		end
+
+		if Library and Library.Notify then
+			Library:Notify({ 
+				Title = "Niggerhub", 
+				Description = toggleState and "Anti Grab Exploiter V5 ON" or "Anti Grab Exploiter V5 OFF", 
+				Time = 1.5, 
+				BigIcon = "info" 
+			})
+		end
+	end,
+})
+
+local AntiGrabV19Enabled = false
+local savedCFrame = nil -- الميزة 1: حفظ الإحداثيات الأصلية بدقة تامة
+
+DF:AddToggle("AntiGrabV19Toggle", {
+	Text = "Anti Grab Exploiter 19V",
+	Default = false,
+	Callback = function(arg)
+		AntiGrabV19Enabled = arg
+
+		-- تنظيف الاتصالات القديمة بالكامل لمنع التعليق
+		if V19_SteppedConn then V19_SteppedConn:Disconnect() V19_SteppedConn = nil end
+		if V19_NetConn then V19_NetConn:Disconnect() V19_NetConn = nil end
+		if V19_DestroyerConn then V19_DestroyerConn:Disconnect() V19_DestroyerConn = nil end
+		if V19_SpamConn then V19_SpamConn:Disconnect() V19_SpamConn = nil end
+
+		if AntiGrabV19Enabled then
+			-- المحور الأول: فحص عالي السرعة (Stepped Loop)
+			V19_SteppedConn = RunService.Stepped:Connect(function()
+				if not char then return end
+				local v27, v28, v29 = GetHRH(char)
+				if not v27 or not v28 or not v29 or v29.Health <= 0 then return end
+
+				local rootPart = v28:FindFirstChild("HumanoidRootPart") or v28
+
+				if LocalPlayer:FindFirstChild("IsHeld") and LocalPlayer.IsHeld.Value then
+					-- [1] حفظ المكان الأصلي فور القبض
+					pcall(function()
+						if not savedCFrame and rootPart then
+							savedCFrame = rootPart.CFrame
+						end
+					end)
+
+					-- [2] Anti-Fling & [3] Anti-Spin
+					pcall(function()
+						if rootPart then
+							if rootPart.AssemblyLinearVelocity.Magnitude > 50 then
+								rootPart.AssemblyLinearVelocity = Vector3.zero
+							end
+							if rootPart.AssemblyAngularVelocity.Magnitude > 10 then
+								rootPart.AssemblyAngularVelocity = Vector3.zero
+							end
+						end
+					end)
+
+					-- [4] Anti-Kick Velocity Bypass & [5] Anti-Gravity Exploit Distortion
+					pcall(function()
+						v28.Anchored = true
+						if Struggle and Struggle.FireServer then
+							Struggle:FireServer()
+						end
+					end)
+
+					task.wait()
+
+					pcall(function()
+						v28.Anchored = false
+					end)
+
+					-- [6] Ragdoll Auto Recovery Bypass
+					if AntiGrabMode == "Ragdoll" and v29:FindFirstChild("Ragdolled") and not v29.Ragdolled.Value then
+						pcall(function()
+							ReplicatedStorage.CharacterEvents.RagdollRemote:FireServer(v28, 0)
+						end)
+					end
+				else
+					-- [7] Teleport-Back Engine: إرجاعك لمكانك الأساسي بدقة متناهية فور فك القبضة
+					if savedCFrame and rootPart then
+						pcall(function()
+							rootPart.CFrame = savedCFrame
+						end)
+						savedCFrame = nil
+					end
+				end
+			end)
+
+			-- المحور الثاني: حماية الشبكة الفائقة (Heartbeat Network Loop)
+			V19_NetConn = RunService.Heartbeat:Connect(function()
+				if not char then return end
+				pcall(function()
+					for _, part in ipairs(char:GetDescendants()) do
+						-- [8] Anti Network Ownership Steal & [9] Part Assembly Force Sync
+						if part:IsA("BasePart") and part:CanSetNetworkOwnership() then
+							if part.NetworkOwner ~= LocalPlayer then
+								part:SetNetworkOwner(LocalPlayer)
+							end
+						end
+					end
+				end)
+			end)
+
+			-- المحور الثالث: كاشف ومخرب الاستغلالات المدمر (Exploiter Destroyer)
+			V19_DestroyerConn = RunService.Heartbeat:Connect(function()
+				if not char then return end
+				pcall(function()
+					local rootPart = char:FindFirstChild("HumanoidRootPart")
+
+					-- [10] إلى [13]: Anti Weld Spam, WeldConstraint Trap, BinaryStringValue & Fake Attachments
+					for _, desc in ipairs(char:GetDescendants()) do
+						if desc:IsA("Weld") or desc:IsA("WeldConstraint") or desc:IsA("BinaryStringValue") or desc:IsA("Attachment") then
+							if desc.Name ~= "RootJoint" and desc.Name ~= "Neck" and desc.Name ~= "RightShoulder" and desc.Name ~= "LeftShoulder" and desc.Name ~= "RightHip" and desc.Name ~= "LeftHip" then
+								if desc.Part0 and desc.Part1 then
+									local otherPart = (desc.Part0.Parent == char) and desc.Part1 or desc.Part0
+									if otherPart and otherPart.Parent and otherPart.Parent ~= char and otherPart.Parent ~= workspace then
+										desc:Destroy()
+										if otherPart.Parent and otherPart.Parent:IsA("Tool") then
+											otherPart.Parent:Destroy()
+										elseif otherPart then
+											otherPart:Destroy()
+										end
+									end
+								end
+							end
+						end
+					end
+
+					-- [14] Proximity Threat Radar & [15] Anti TouchInterest Exploit Explode
+					if rootPart then
+						for _, obj in ipairs(workspace:GetChildren()) do
+							if obj:IsA("Model") and obj ~= char then
+								local handle = obj:FindFirstChild("Handle") or obj:FindFirstChildWhichIsA("BasePart")
+								if handle then
+									local dist = (handle.Position - rootPart.Position).Magnitude
+									if dist < 5 and (obj:FindFirstChild("TouchInterest") or obj.Name:lower():find("grab") or obj.Name:lower():find("tool") or obj.Name:lower():find("part") or obj.Name:lower():find("fling")) then
+										obj:Destroy()
+									end
+								end
+							end
+						end
+					end
+				end)
+			end)
+
+			-- المحور الرابع: التحصين الأخير والتحكم بحالة الشخصية
+			V19_SpamConn = RunService.RenderStepped:Connect(function()
+				-- [16] إلى [19]: حماية الذاكرة، منع تجميد الفيزياء، وتثبيت الاستقرار
+				pcall(function()
+					if LocalPlayer and LocalPlayer.Character then
+						local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+						if humanoid then
+							humanoid.PlatformStand = false
+						end
+					end
+				end)
+			end)
+		else
+			savedCFrame = nil
+		end
+	end,
+}):AddKeyPicker("ToggleAntiGrabV19", {
+	Default = "None",
+	Callback = function()
+		local toggleState = not AntiGrabV19Enabled
+		if Toggles and Toggles.AntiGrabV19Toggle then
+			Toggles.AntiGrabV19Toggle:SetValue(toggleState)
+		end
+
+		if Library and Library.Notify then
+			Library:Notify({ 
+				Title = "Niggerhub", 
+				Description = toggleState and "Anti Grab Exploiter 19V ON" or "Anti Grab Exploiter 19V OFF", 
+				Time = 1.5, 
+				BigIcon = "info" 
+			})
+		end
+	end,
+})
+
+
+
+local AntiGrabConn = nil
+
+DF:AddToggle("AntiGrab19V", {
+	Text = "Anti Grab 14v",
+	Default = false,
+	Callback = function(arg)
+		if AntiGrabConn then
+			AntiGrabConn:Disconnect()
+			AntiGrabConn = nil
+		end
+
+		if arg then
+			AntiGrabConn = RunService.Heartbeat:Connect(function()
+				pcall(function()
+					if not char then return end
+					local hrp = char:FindFirstChild("HumanoidRootPart")
+					if not hrp then return end
+
+					-- إجبار الـ Anchored على البقاء false لمنع التثبيت نهائياً
+					if hrp.Anchored then
+						hrp.Anchored = false
+					end
+
+					-- تدمير أي لحام أو قيد (Weld / WeldConstraint) يربطه أي لاعب فيك
+					for _, obj in ipairs(hrp:GetChildren()) do
+						if obj:IsA("Weld") or obj:IsA("WeldConstraint") then
+							if (obj.Part0 and obj.Part0.Parent ~= char) or (obj.Part1 and obj.Part1.Parent ~= char) then
+								obj:Destroy()
+							end
+						end
+					end
+
+					-- منع أي سحب أو دفع خارجي عنيف
+					if hrp.AssemblyLinearVelocity.Magnitude > 60 then
+						hrp.AssemblyLinearVelocity = Vector3.zero
+					end
+				end)
+			end)
+		end
+	end,
+})
+
+local savedCFrame = nil -- ميزة حفظ الإحداثيات والرجوع إليها فور انفكاك القبضة
+
+DF:AddToggle("AntiGrabV2Toggle", {
+	Text = "Anti Grab Exploiter 8v",
+	Default = false,
+	Callback = function(arg)
+		AntiGrabEnabled = arg
+
+		-- تنظيف الاتصالات القديمة لمنع التداخل
+		if AntiGrabV2Conn then AntiGrabV2Conn:Disconnect() AntiGrabV2Conn = nil end
+		if AntiGrabV2SpamConn then AntiGrabV2SpamConn:Disconnect() AntiGrabV2SpamConn = nil end
+		if OwnerProtectV2Conn then OwnerProtectV2Conn:Disconnect() OwnerProtectV2Conn = nil end
+		if AntiNetworkManipConn then AntiNetworkManipConn:Disconnect() AntiNetworkManipConn = nil end
+		if AntiExploiterRadarConn then AntiExploiterRadarConn:Disconnect() AntiExploiterRadarConn = nil end
+
+		if AntiGrabEnabled then
+			-- 1. الفحص الأساسي الأصلي مع ميزة التيليبرت (حفظ المكان والعودة)
+			AntiGrabV2Conn = RunService.Stepped:Connect(function()
+				if not LocalPlayer:FindFirstChild("IsHeld") or not LocalPlayer.IsHeld.Value then
+					-- [تيليبرت]: إرجاعك لمكانك الأساسي فور فك القبضة بدقة متناهية
+					if savedCFrame and char then
+						pcall(function()
+							local v27, v28, v29 = GetHRH(char)
+							if v28 then
+								local rootPart = v28:FindFirstChild("HumanoidRootPart") or v28
+								if rootPart then
+									rootPart.CFrame = savedCFrame
+								end
+							end
+						end)
+					end
+					savedCFrame = nil
+					return
+				end
+
+				if not char then
+					return
+				end
+				local v27, v28, v29 = GetHRH(char)
+				if not v27 or not v28 or not v29 or v29.Health <= 0 then
+					return
+				end
+
+				local rootPart = v28:FindFirstChild("HumanoidRootPart") or v28
+
+				-- [تيليبرت]: حفظ المكان الأصلي فور القبض عليك
+				pcall(function()
+					if not savedCFrame and rootPart then
+						savedCFrame = rootPart.CFrame
+					end
+				end)
+
+				-- حماية السرعة لمنع الكيك أثناء الـ Grab أو التلاعب بالفيزياء
+				pcall(function()
+					if rootPart then
+						if rootPart.AssemblyLinearVelocity.Magnitude > 70 then
+							rootPart.AssemblyLinearVelocity = Vector3.zero
+						end
+						if rootPart.AssemblyAngularVelocity.Magnitude > 20 then
+							rootPart.AssemblyAngularVelocity = Vector3.zero
+						end
+					end
+				end)
+
+				v28.Anchored = true
+				if Struggle and Struggle.FireServer then
+					Struggle:FireServer()
+				end
+				task.wait()
+				v28.Anchored = false
+
+				if AntiGrabMode == "Ragdoll" and v29:FindFirstChild("Ragdolled") and not v29.Ragdolled.Value then
+					ReplicatedStorage.CharacterEvents.RagdollRemote:FireServer(v28, 0)
+				elseif AntiGrabMode == "Tractor Escape" then
+					local tractorGreen = toysFolder:FindFirstChild("TractorGreen") or
+					NewToy("TractorGreen", CFrame.new(300, 30, 500))
+
+					if tractorGreen then
+						local vehicleSeat = tractorGreen:WaitForChild("VehicleSeat", 1)
+
+						if vehicleSeat and vehicleSeat.Parent and not vehicleSeat.Occupant and v29 and v29.Health > 0 then
+							while task.wait() and AntiGrabEnabled and AntiGrabMode == "Tractor Escape" and vehicleSeat and vehicleSeat.Parent and not vehicleSeat.Occupant and v29 and v29.Parent and v29.Health > 0 do
+								vehicleSeat:Sit(v29)
+							end
+
+							if v29 and v29.Parent and v29.Health > 0 and vehicleSeat and vehicleSeat.Parent and vehicleSeat.Occupant and vehicleSeat.Occupant == v29 then
+								DestroyT(tractorGreen)
+								v29.Sit = true
+							end
+						else
+							DestroyT(tractorGreen)
+						end
+					end
+				end
+			end)
+
+			-- 2. حماية ملكية الشبكة (Network Ownership) لمنع الهكر من التحكم بأجزائك عبر الشبكة
+			OwnerProtectV2Conn = RunService.Heartbeat:Connect(function()
+				if not char then return end
+				pcall(function()
+					for _, part in ipairs(char:GetDescendants()) do
+						if part:IsA("BasePart") and part:CanSetNetworkOwnership() then
+							part:SetNetworkOwner(LocalPlayer)
+						end
+					end
+				end)
+			end)
+
+			-- 3. تدمير أدوات الربط والـ Welds الوهمية الخاصة بالـ Spam Grab
+			AntiGrabV2SpamConn = RunService.Heartbeat:Connect(function()
+				if not char then return end
+				pcall(function()
+					for _, descendant in ipairs(char:GetDescendants()) do
+						if descendant:IsA("Weld") or descendant:IsA("WeldConstraint") or descendant:IsA("BinaryStringValue") then
+							if descendant.Name ~= "RootJoint" and descendant.Name ~= "Neck" then
+								descendant:Destroy()
+							end
+						end
+					end
+				end)
+			end)
+
+			-- 4. Anti Network Manipulation: تصفية وتثبيت عمر البيانات لمنع أي تلاعب بشبكة الشخصية
+			AntiNetworkManipConn = RunService.Heartbeat:Connect(function()
+				if not char then return end
+				pcall(function()
+					for _, part in ipairs(char:GetDescendants()) do
+						if part:IsA("BasePart") then
+							if part.ReceiveAge > 0 then
+								part.ReceiveAge = 0
+							end
+						end
+					end
+				end)
+			end)
+
+			-- 5. Anti Exploiter Powerful Radar: رادار يستشعر أي أدوات سحب أو فلينغ محيطة ويدمرها قبل أن تقترب
+			AntiExploiterRadarConn = RunService.Heartbeat:Connect(function()
+				if not char then return end
+				pcall(function()
+					local rootPart = char:FindFirstChild("HumanoidRootPart")
+					if rootPart then
+						for _, obj in ipairs(workspace:GetChildren()) do
+							if obj:IsA("Model") and obj ~= char then
+								local handle = obj:FindFirstChild("Handle") or obj:FindFirstChildWhichIsA("BasePart")
+								if handle then
+									local dist = (handle.Position - rootPart.Position).Magnitude
+									if dist < 8 and (obj:FindFirstChild("TouchInterest") or obj.Name:lower():find("grab") or obj.Name:lower():find("tool") or obj.Name:lower():find("part") or obj.Name:lower():find("fling")) then
+										obj:Destroy()
+									end
+								end
+							end
+						end
+					end
+				end)
+			end)
+		else
+			savedCFrame = nil
+		end
+	end,
+}):AddKeyPicker("ToggleAntiGrabV2", {
+	Default = "None",
+	Callback = function()
+		local toggleState = not AntiGrabEnabled
+		if Toggles and Toggles.AntiGrabV2Toggle then
+			Toggles.AntiGrabV2Toggle:SetValue(toggleState)
+		end
+
+		if Library and Library.Notify then
+			Library:Notify({ 
+				Title = "Niggerhub", 
+				Description = toggleState and "Anti Grab Exploiter V2 [Teleport + Network] ON" or "Anti Grab Exploiter V2 OFF", 
+				Time = 1.5, 
+				BigIcon = "info" 
+			})
+		end
+	end,
+})
+
+local savedCFrame = nil -- نظام حفظ الإحداثيات والرجوع الفوري
+
+DF:AddToggle("AntiGrab921VToggle", {
+	Text = "Anti Grab Exploiter 32V",
+	Default = false,
+	Callback = function(arg)
+		AntiGrabEnabled = arg
+
+		-- تنظيف الاتصالات القديمة لمنع التداخل
+		if AntiGrabV2Conn then AntiGrabV2Conn:Disconnect() AntiGrabV2Conn = nil end
+		if AntiGrabV2SpamConn then AntiGrabV2SpamConn:Disconnect() AntiGrabV2SpamConn = nil end
+		if OwnerProtectV2Conn then OwnerProtectV2Conn:Disconnect() OwnerProtectV2Conn = nil end
+		if AntiNetworkManipConn then AntiNetworkManipConn:Disconnect() AntiNetworkManipConn = nil end
+
+		if AntiGrabEnabled then
+			-- 1. الفحص الأساسي الأصلي مع نظام التيليبرت المرجعي
+			AntiGrabV2Conn = RunService.Stepped:Connect(function()
+				if not LocalPlayer:FindFirstChild("IsHeld") or not LocalPlayer.IsHeld.Value then
+					-- إرجاعك لمكانك الأساسي فور فك القبضة بدقة متناهية
+					if savedCFrame and char then
+						pcall(function()
+							local v27, v28, v29 = GetHRH(char)
+							if v28 then
+								local rootPart = v28:FindFirstChild("HumanoidRootPart") or v28
+								if rootPart then
+									rootPart.CFrame = savedCFrame
+								end
+							end
+						end)
+					end
+					savedCFrame = nil
+					return
+				end
+
+				if not char then
+					return
+				end
+				local v27, v28, v29 = GetHRH(char)
+				if not v27 or not v28 or not v29 or v29.Health <= 0 then
+					return
+				end
+
+				local rootPart = v28:FindFirstChild("HumanoidRootPart") or v28
+
+				-- حفظ المكان الأصلي فور القبض عليك
+				pcall(function()
+					if not savedCFrame and rootPart then
+						savedCFrame = rootPart.CFrame
+					end
+				end)
+
+				-- حماية السرعة لمنع الكيك أثناء الـ Grab أو التلاعب بالفيزياء
+				pcall(function()
+					if rootPart then
+						if rootPart.AssemblyLinearVelocity.Magnitude > 70 then
+							rootPart.AssemblyLinearVelocity = Vector3.zero
+						end
+						if rootPart.AssemblyAngularVelocity.Magnitude > 20 then
+							rootPart.AssemblyAngularVelocity = Vector3.zero
+						end
+					end
+				end)
+
+				v28.Anchored = true
+				if Struggle and Struggle.FireServer then
+					Struggle:FireServer()
+				end
+				task.wait()
+				v28.Anchored = false
+
+				if AntiGrabMode == "Ragdoll" and v29:FindFirstChild("Ragdolled") and not v29.Ragdolled.Value then
+					ReplicatedStorage.CharacterEvents.RagdollRemote:FireServer(v28, 0)
+				elseif AntiGrabMode == "Tractor Escape" then
+					local tractorGreen = toysFolder:FindFirstChild("TractorGreen") or
+					NewToy("TractorGreen", CFrame.new(300, 30, 500))
+
+					if tractorGreen then
+						local vehicleSeat = tractorGreen:WaitForChild("VehicleSeat", 1)
+
+						if vehicleSeat and vehicleSeat.Parent and not vehicleSeat.Occupant and v29 and v29.Health > 0 then
+							while task.wait() and AntiGrabEnabled and AntiGrabMode == "Tractor Escape" and vehicleSeat and vehicleSeat.Parent and not vehicleSeat.Occupant and v29 and v29.Parent and v29.Health > 0 do
+								vehicleSeat:Sit(v29)
+							end
+
+							if v29 and v29.Parent and v29.Health > 0 and vehicleSeat and vehicleSeat.Parent and vehicleSeat.Occupant and vehicleSeat.Occupant == v29 then
+								DestroyT(tractorGreen)
+								v29.Sit = true
+							end
+						else
+							DestroyT(tractorGreen)
+						end
+					end
+				end
+			end)
+
+			-- 2. حماية ملكية الشبكة (Network Ownership) لمنع الهكر من التحكم بأجزائك عبر الشبكة
+			OwnerProtectV2Conn = RunService.Heartbeat:Connect(function()
+				if not char then return end
+				pcall(function()
+					for _, part in ipairs(char:GetDescendants()) do
+						if part:IsA("BasePart") and part:CanSetNetworkOwnership() then
+							part:SetNetworkOwner(LocalPlayer)
+						end
+					end
+				end)
+			end)
+
+			-- 3. تدمير أدوات الربط والـ Welds الوهمية الخاصة بالـ Spam Grab
+			AntiGrabV2SpamConn = RunService.Heartbeat:Connect(function()
+				if not char then return end
+				pcall(function()
+					for _, descendant in ipairs(char:GetDescendants()) do
+						if descendant:IsA("Weld") or descendant:IsA("WeldConstraint") or descendant:IsA("BinaryStringValue") then
+							if descendant.Name ~= "RootJoint" and descendant.Name ~= "Neck" then
+								descendant:Destroy()
+							end
+						end
+					end
+				end)
+			end)
+
+			-- 4. Anti Network Manipulation: تصفية وتثبيت تدفق البيانات
+			AntiNetworkManipConn = RunService.Heartbeat:Connect(function()
+				if not char then return end
+				pcall(function()
+					for _, part in ipairs(char:GetDescendants()) do
+						if part:IsA("BasePart") then
+							if part.ReceiveAge > 0 then
+								part.ReceiveAge = 0
+							end
+						end
+					end
+				end)
+			end)
+		else
+			savedCFrame = nil
+		end
+	end,
+}):AddKeyPicker("ToggleAntiGrab921V", {
+	Default = "None",
+	Callback = function()
+		local toggleState = not AntiGrabEnabled
+		if Toggles and Toggles.AntiGrab921VToggle then
+			Toggles.AntiGrab921VToggle:SetValue(toggleState)
+		end
+
+		if Library and Library.Notify then
+			Library:Notify({ 
+				Title = "Niggerhub", 
+				Description = toggleState and "Anti Grab Exploiter V ON" or "Anti Grab Exploiter V OFF", 
+				Time = 1.5, 
+				BigIcon = "info" 
+			})
+		end
+	end,
+})
+
+local savedCFrame = nil -- نظام حفظ الإحداثيات والرجوع الفوري
+local customControlCFrame = nil -- التحكم الخاص بك بالـ CFrame لمنع تلاعب الهكرز
+
+DF:AddToggle("WorstNightmareToggle", {
+	Text = "Anti Grab Exploiter [Worst Nightmare]",
+	Default = false,
+	Callback = function(arg)
+		AntiGrabEnabled = arg
+
+		-- تنظيف الاتصالات القديمة لمنع التداخل
+		if AntiGrabV2Conn then AntiGrabV2Conn:Disconnect() AntiGrabV2Conn = nil end
+		if AntiGrabV2SpamConn then AntiGrabV2SpamConn:Disconnect() AntiGrabV2SpamConn = nil end
+		if OwnerProtectV2Conn then OwnerProtectV2Conn:Disconnect() OwnerProtectV2Conn = nil end
+		if AntiNetworkManipConn then AntiNetworkManipConn:Disconnect() AntiNetworkManipConn = nil end
+		if CFrameControlConn then CFrameControlConn:Disconnect() CFrameControlConn = nil end
+
+		if AntiGrabEnabled then
+			-- 1. الفحص الأساسي الأصلي مع نظام التيليبرت المرجعي
+			AntiGrabV2Conn = RunService.Stepped:Connect(function()
+				if not LocalPlayer:FindFirstChild("IsHeld") or not LocalPlayer.IsHeld.Value then
+					-- إرجاعك لمكانك الأساسي فور فك القبضة بدقة متناهية
+					if savedCFrame and char then
+						pcall(function()
+							local v27, v28, v29 = GetHRH(char)
+							if v28 then
+								local rootPart = v28:FindFirstChild("HumanoidRootPart") or v28
+								if rootPart then
+									rootPart.CFrame = savedCFrame
+								end
+							end
+						end)
+					end
+					savedCFrame = nil
+					return
+				end
+
+				if not char then
+					return
+				end
+				local v27, v28, v29 = GetHRH(char)
+				if not v27 or not v28 or not v29 or v29.Health <= 0 then
+					return
+				end
+
+				local rootPart = v28:FindFirstChild("HumanoidRootPart") or v28
+
+				-- حفظ المكان الأصلي فور القبض عليك
+				pcall(function()
+					if not savedCFrame and rootPart then
+						savedCFrame = rootPart.CFrame
+					end
+				end)
+
+				-- حماية السرعة لمنع الكيك أثناء الـ Grab أو التلاعب بالفيزياء
+				pcall(function()
+					if rootPart then
+						if rootPart.AssemblyLinearVelocity.Magnitude > 70 then
+							rootPart.AssemblyLinearVelocity = Vector3.zero
+						end
+						if rootPart.AssemblyAngularVelocity.Magnitude > 20 then
+							rootPart.AssemblyAngularVelocity = Vector3.zero
+						end
+					end
+				end)
+
+				v28.Anchored = true
+				if Struggle and Struggle.FireServer then
+					Struggle:FireServer()
+				end
+				task.wait()
+				v28.Anchored = false
+
+				if AntiGrabMode == "Ragdoll" and v29:FindFirstChild("Ragdolled") and not v29.Ragdolled.Value then
+					ReplicatedStorage.CharacterEvents.RagdollRemote:FireServer(v28, 0)
+				elseif AntiGrabMode == "Tractor Escape" then
+					local tractorGreen = toysFolder:FindFirstChild("TractorGreen") or
+					NewToy("TractorGreen", CFrame.new(300, 30, 500))
+
+					if tractorGreen then
+						local vehicleSeat = tractorGreen:WaitForChild("VehicleSeat", 1)
+
+						if vehicleSeat and vehicleSeat.Parent and not vehicleSeat.Occupant and v29 and v29.Health > 0 then
+							while task.wait() and AntiGrabEnabled and AntiGrabMode == "Tractor Escape" and vehicleSeat and vehicleSeat.Parent and not vehicleSeat.Occupant and v29 and v29.Parent and v29.Health > 0 do
+								vehicleSeat:Sit(v29)
+							end
+
+							if v29 and v29.Parent and v29.Health > 0 and vehicleSeat and vehicleSeat.Parent and vehicleSeat.Occupant and vehicleSeat.Occupant == v29 then
+								DestroyT(tractorGreen)
+								v29.Sit = true
+							end
+						else
+							DestroyT(tractorGreen)
+						end
+					end
+				end
+			end)
+
+			-- 2. حماية ملكية الشبكة (Network Ownership) لمنع الهكر من التحكم بأجزائك عبر الشبكة
+			OwnerProtectV2Conn = RunService.Heartbeat:Connect(function()
+				if not char then return end
+				pcall(function()
+					for _, part in ipairs(char:GetDescendants()) do
+						if part:IsA("BasePart") and part:CanSetNetworkOwnership() then
+							part:SetNetworkOwner(LocalPlayer)
+						end
+					end
+				end)
+			end)
+
+			-- 3. تدمير أدوات الربط والـ Welds الوهمية الخاصة بالـ Spam Grab
+			AntiGrabV2SpamConn = RunService.Heartbeat:Connect(function()
+				if not char then return end
+				pcall(function()
+					for _, descendant in ipairs(char:GetDescendants()) do
+						if descendant:IsA("Weld") or descendant:IsA("WeldConstraint") or descendant:IsA("BinaryStringValue") then
+							if descendant.Name ~= "RootJoint" and descendant.Name ~= "Neck" then
+								descendant:Destroy()
+							end
+						end
+					end
+				end)
+			end)
+
+			-- 4. Anti Network Manipulation: تصفية وتثبيت تدفق البيانات
+			AntiNetworkManipConn = RunService.Heartbeat:Connect(function()
+				if not char then return end
+				pcall(function()
+					for _, part in ipairs(char:GetDescendants()) do
+						if part:IsA("BasePart") then
+							if part.ReceiveAge > 0 then
+								part.ReceiveAge = 0
+							end
+						end
+					end
+				end)
+			end)
+
+			-- 5. [CFrame Control Engine] تحكم قوي وثابت بالـ CFrame لمنع أي هكر من تحريكك أو التلاعب بإحداثياتك
+			CFrameControlConn = RunService.Heartbeat:Connect(function()
+				pcall(function()
+					if not char then return end
+					local rootPart = char:FindFirstChild("HumanoidRootPart")
+					if rootPart then
+						-- إذا لم تكن مسوكاً، نقوم بتحديث الـ CFrame الخاص بك ليبقى تحت سيطرتك المطلقة
+						local isHeld = LocalPlayer:FindFirstChild("IsHeld") and LocalPlayer.IsHeld.Value
+						if not isHeld then
+							customControlCFrame = rootPart.CFrame
+						else
+							-- إذا حاول هكر سحبك بعيداً أو تغيير مكانك قسراً أثناء القبض، نثبّت مكانه على آخر CFrame سليم
+							if customControlCFrame and (rootPart.Position - customControlCFrame.Position).Magnitude > 35 then
+								rootPart.CFrame = customControlCFrame
+							end
+						end
+					end
+				end)
+			end)
+		else
+			savedCFrame = nil
+			customControlCFrame = nil
+		end
+	end,
+}):AddKeyPicker("ToggleWorstNightmare", {
+	Default = "None",
+	Callback = function()
+		local toggleState = not AntiGrabEnabled
+		if Toggles and Toggles.WorstNightmareToggle then
+			Toggles.WorstNightmareToggle:SetValue(toggleState)
+		end
+
+		if Library and Library.Notify then
+			Library:Notify({ 
+				Title = "Niggerhub", 
+				Description = toggleState and "Worst Nightmare" or "Worst Nightmare OFF", 
+				Time = 1.5, 
+				BigIcon = "success" 
+			})
+		end
+	end,
+})
+
+local savedCFrame = nil -- نظام حفظ الإحداثيات والرجوع الفوري
+local customControlCFrame = nil -- التحكم الخاص بك بالـ CFrame لمنع تلاعب الهكرز
+
+DF:AddToggle("WorstNightmareToggle", {
+	Text = "Anti Grab Exploiter LagProof [Worst Nightmare]",
+	Default = false,
+	Callback = function(arg)
+		AntiGrabEnabled = arg
+
+		-- تنظيف الاتصالات القديمة لمنع التداخل
+		if AntiGrabV2Conn then AntiGrabV2Conn:Disconnect() AntiGrabV2Conn = nil end
+		if AntiGrabV2SpamConn then AntiGrabV2SpamConn:Disconnect() AntiGrabV2SpamConn = nil end
+		if OwnerProtectV2Conn then OwnerProtectV2Conn:Disconnect() OwnerProtectV2Conn = nil end
+		if AntiNetworkManipConn then AntiNetworkManipConn:Disconnect() AntiNetworkManipConn = nil end
+		if CFrameControlConn then CFrameControlConn:Disconnect() CFrameControlConn = nil end
+
+		if AntiGrabEnabled then
+			-- 1. الفحص الأساسي الأصلي مع حماية كاملة ضد الـ Lag والتعليق
+			AntiGrabV2Conn = RunService.Stepped:Connect(function()
+				local success, err = pcall(function()
+					if not LocalPlayer:FindFirstChild("IsHeld") or not LocalPlayer.IsHeld.Value then
+						-- إرجاعك لمكانك الأساسي فور فك القبضة بدقة متناهية
+						if savedCFrame and char then
+							local v27, v28, v29 = GetHRH(char)
+							if v28 then
+								local rootPart = v28:FindFirstChild("HumanoidRootPart") or v28
+								if rootPart then
+									rootPart.CFrame = savedCFrame
+								end
+							end
+						end
+						savedCFrame = nil
+						return
+					end
+
+					if not char then return end
+					local v27, v28, v29 = GetHRH(char)
+					if not v27 or not v28 or not v29 or v29.Health <= 0 then
+						return
+					end
+
+					local rootPart = v28:FindFirstChild("HumanoidRootPart") or v28
+
+					-- حفظ المكان الأصلي فور القبض عليك
+					if not savedCFrame and rootPart then
+						savedCFrame = rootPart.CFrame
+					end
+
+					-- حماية السرعة لمنع الكيك أثناء الـ Lag أو الـ Grab
+					if rootPart then
+						if rootPart.AssemblyLinearVelocity.Magnitude > 70 then
+							rootPart.AssemblyLinearVelocity = Vector3.zero
+						end
+						if rootPart.AssemblyAngularVelocity.Magnitude > 20 then
+							rootPart.AssemblyAngularVelocity = Vector3.zero
+						end
+					end
+
+					v28.Anchored = true
+					if Struggle and Struggle.FireServer then
+						Struggle:FireServer()
+					end
+					
+					-- استخدام بديل آمن لـ task.wait لمنع توقف اللوب أثناء التعليق (Lag)
+					local startTime = tick()
+					while tick() - startTime < 0.05 do
+						RunService.Stepped:Wait()
+					end
+					
+					v28.Anchored = false
+
+					if AntiGrabMode == "Ragdoll" and v29:FindFirstChild("Ragdolled") and not v29.Ragdolled.Value then
+						ReplicatedStorage.CharacterEvents.RagdollRemote:FireServer(v28, 0)
+					elseif AntiGrabMode == "Tractor Escape" then
+						local tractorGreen = toysFolder:FindFirstChild("TractorGreen") or
+						NewToy("TractorGreen", CFrame.new(300, 30, 500))
+
+						if tractorGreen then
+							local vehicleSeat = tractorGreen:WaitForChild("VehicleSeat", 1)
+
+							if vehicleSeat and vehicleSeat.Parent and not vehicleSeat.Occupant and v29 and v29.Health > 0 then
+								while task.wait() and AntiGrabEnabled and AntiGrabMode == "Tractor Escape" and vehicleSeat and vehicleSeat.Parent and not vehicleSeat.Occupant and v29 and v29.Parent and v29.Health > 0 do
+									vehicleSeat:Sit(v29)
+								end
+
+								if v29 and v29.Parent and v29.Health > 0 and vehicleSeat and vehicleSeat.Parent and vehicleSeat.Occupant and vehicleSeat.Occupant == v29 then
+									DestroyT(tractorGreen)
+									v29.Sit = true
+								end
+							else
+								DestroyT(tractorGreen)
+							end
+						end
+					end
+				end)
+				-- حتى لو صار خطأ بسبب الـ Lag الشديد، pcall تمنع توقف السكربت وتخليه يكمل بشكل طبيعي
+			end)
+
+			-- 2. حماية ملكية الشبكة (Network Ownership) مع حماية ضد الـ Lag
+			OwnerProtectV2Conn = RunService.Heartbeat:Connect(function()
+				pcall(function()
+					if not char then return end
+					for _, part in ipairs(char:GetDescendants()) do
+						if part:IsA("BasePart") and part:CanSetNetworkOwnership() then
+							part:SetNetworkOwner(LocalPlayer)
+						end
+					end
+				end)
+			end)
+
+			-- 3. تدمير أدوات الربط الوهمية الخاصة بالـ Spam Grab
+			AntiGrabV2SpamConn = RunService.Heartbeat:Connect(function()
+				pcall(function()
+					if not char then return end
+					for _, descendant in ipairs(char:GetDescendants()) do
+						if descendant:IsA("Weld") or descendant:IsA("WeldConstraint") or descendant:IsA("BinaryStringValue") then
+							if descendant.Name ~= "RootJoint" and descendant.Name ~= "Neck" then
+								descendant:Destroy()
+							end
+						end
+					end
+				end)
+			end)
+
+			-- 4. Anti Network Manipulation: تثبيت البيانات لمنع انفصال الشبكة أثناء التعليق
+			AntiNetworkManipConn = RunService.Heartbeat:Connect(function()
+				pcall(function()
+					if not char then return end
+					for _, part in ipairs(char:GetDescendants()) do
+						if part:IsA("BasePart") then
+							if part.ReceiveAge > 0 then
+								part.ReceiveAge = 0
+							end
+						end
+					end
+				end)
+			end)
+
+			-- 5. [Lag-Proof CFrame Control Engine] تحكم قوي بالـ CFrame حتى لو صار عندك لاق فظيع
+			CFrameControlConn = RunService.Heartbeat:Connect(function()
+				pcall(function()
+					if not char then return end
+					local rootPart = char:FindFirstChild("HumanoidRootPart")
+					if rootPart then
+						local isHeld = LocalPlayer:FindFirstChild("IsHeld") and LocalPlayer.IsHeld.Value
+						if not isHeld then
+							customControlCFrame = rootPart.CFrame
+						else
+							if customControlCFrame and (rootPart.Position - customControlCFrame.Position).Magnitude > 35 then
+								rootPart.CFrame = customControlCFrame
+							end
+						end
+					end
+				end)
+			end)
+		else
+			savedCFrame = nil
+			customControlCFrame = nil
+		end
+	end,
+}):AddKeyPicker("ToggleWorstNightmare", {
+	Default = "None",
+	Callback = function()
+		theToggleState = not AntiGrabEnabled
+		if Toggles and Toggles.WorstNightmareToggle then
+			Toggles.WorstNightmareToggle:SetValue(theToggleState)
+		end
+
+		if Library and Library.Notify then
+			Library:Notify({ 
+				Title = "Niggerhub", 
+				Description = theToggleState and "Worst Nightmare [Lag Proof] ON" or "Worst Nightmare OFF", 
+				Time = 1.5, 
+				BigIcon = "success" 
+			})
+		end
+	end,
+})
+
+
+
+
 local AntiNetConn = nil
 
 DF:AddToggle("AntiNetworkManipulation", {
@@ -2966,6 +4582,7 @@ DF:AddToggle("AntiRagdollPallet", {
 		end
 	end,
 })
+
 
 DF:AddToggle("AntiBlob", {
 	Text = "Anti Blob",
@@ -3234,6 +4851,7 @@ DF:AddToggle("AntiExplode", {
 		AntiExplodeEnabled = arg
 	end,
 })
+
 
 DF:AddToggle("LoopRagdoll", {
 	Text = "Anti Snowball",
@@ -3542,6 +5160,59 @@ DF:AddToggle("AutoDeleteLegs", {
 	end,
 })
 
+DF:AddToggle("DeleteArmsToggle", {
+	Text = "Delete ur Arms",
+	Tooltip = "Auto Delete Arms",
+	Default = false,
+	Callback = function(arg)
+		ADA = arg
+
+		while ADA and task.wait() do
+			if char then
+				local v27, v28, v29 = GetHRH(char)
+
+				if v28 and v29 and v29.Health > 0 then
+					if (char:FindFirstChild("Left Arm") or char:FindFirstChild("Right Arm") or char:FindFirstChild("LeftHand") or char:FindFirstChild("RightHand")) and not LocalPlayer.IsHeld.Value then
+						while true do
+							ReplicatedStorage.CharacterEvents.RagdollRemote:FireServer(v28, 0.5)
+							task.wait(0.1)
+							if not (not v28 or not v29 or v29.Health <= 0 or v29:FindFirstChild("Ragdolled") and v29.Ragdolled.Value or not ADA) then
+								continue
+							end
+							break
+						end
+
+						if v28 and v29 and v29.Health > 0 and v29:FindFirstChild("Ragdolled") and v29.Ragdolled.Value and not LocalPlayer.IsHeld.Value then
+							-- استهداف الأيادي (R6 أو R15) ونقلها للإحداثيات البعيدة
+							if char:FindFirstChild("Left Arm") then
+								char["Left Arm"].CFrame = CFrame.new(100000, -100000, 100000)
+							elseif char:FindFirstChild("LeftHand") then
+								char["LeftHand"].CFrame = CFrame.new(100000, -100000, 100000)
+							end
+
+							if char:FindFirstChild("Right Arm") then
+								char["Right Arm"].CFrame = CFrame.new(100000, -100000, 100000)
+							elseif char:FindFirstChild("RightHand") then
+								char["RightHand"].CFrame = CFrame.new(100000, -100000, 100000)
+							end
+
+							task.wait(0.1)
+
+							if v28 and v29 and v29.Health > 0 then
+								SetNetworkOwner:FireServer(v28, v28.CFrame)
+							end
+
+							task.wait(0.5)
+						end
+					end
+				end
+			end
+		end
+	end,
+})
+
+
+
 AntiLagg = false
 
 DF:AddToggle("AntiLag", {
@@ -3567,14 +5238,77 @@ DF:AddToggle("AntiLag", {
 	Default = "None",
 	Callback = function()
 		if AntiLagg then
-			Library:Notify({ Title = "Nil'e", Description = "Anti Lag Off", Time = 1.5, BigIcon = "info" })
+			Library:Notify({ Title = "Niggerhub", Description = "Anti Lag Off", Time = 1.5, BigIcon = "info" })
 			Toggles.AntiLag:SetValue(false)
 		else
-			Library:Notify({ Title = "Nil'e", Description = "Anti Lag On", Time = 1.5, BigIcon = "info" })
+			Library:Notify({ Title = "Niggerhub", Description = "Anti Lag On", Time = 1.5, BigIcon = "info" })
 			Toggles.AntiLag:SetValue(true)
 		end
 	end,
 })
+
+local AntiLagLineEnabled = true
+
+DF:AddToggle("AntiLagLine", {
+	Text = "Anti Lag Line Strong",
+	Default = false,
+	Callback = function(Value)
+		AntiLagLineEnabled = Value
+		CountOfLines = 0
+		AntiLineLag.Enabled = not Value
+
+		if Value then
+			Library:Notify({ Title = "Niggerhub", Description = "Anti Lag Line On", Time = 1.5, BigIcon = "info" })
+		else
+			Library:Notify({ Title = "Niggerhub", Description = "Anti Lag Line Off", Time = 1.5, BigIcon = "info" })
+		end
+	end,
+}):AddKeyPicker("ToggleAntiLagLine", {
+	Default = "None",
+	Callback = function()
+		local newState = not AntiLagLineEnabled
+		if Toggles and Toggles.AntiLagLine then
+			Toggles.AntiLagLine:SetValue(newState)
+		end
+	end,
+})
+
+local AntiShurikenLagEnabled = false
+
+DF:AddToggle("AntiShurikenLagToggle", {
+	Text = "Anti Shuriken Lag",
+	Default = false,
+	Callback = function(arg)
+		AntiShurikenLagEnabled = arg
+
+		if arg then
+			task.spawn(function()
+				while AntiShurikenLagEnabled do
+					pcall(function()
+						-- فحص مجلد الألعاب وحذف أي شوريكين زائدة تسبب لاق
+						for _, v27 in toysFolder:GetChildren() do
+							if v27.Name:lower():find("shuriken") or v27.Name == "ShurikensToKeep" then
+								-- يمكنك تعديل الشرط هنا لحذف الشوريكين غير المرغوب فيها أو الزائدة عن الحد
+								v27:Destroy()
+							end
+						end
+					end)
+					task.wait(0.2)
+				end
+			end)
+		end
+	end,
+}):AddKeyPicker("ToggleAntiShurikenLag", {
+	Default = "None",
+	Callback = function()
+		local toggleState = not AntiShurikenLagEnabled
+		if Toggles and Toggles.AntiShurikenLagToggle then
+			Toggles.AntiShurikenLagToggle:SetValue(toggleState)
+		end
+	end,
+})
+
+
 
 AutoAntiLagg = true
 
@@ -4159,90 +5893,7 @@ DFKT:AddToggle("AntiKickToggle", {
 	end,
 })
 
-local AntiBypassEnabled = false
 
-DFKT:AddToggle("AntiKickBypassToggle", {
-	Text = "Anti Kick fast",
-	Default = false,
-	Callback = function(arg)
-		AntiBypassEnabled = arg
-
-		task.spawn(function()
-			while AntiBypassEnabled do
-				pcall(function()
-					-- التأكد من وجود PCLD والشخصية
-					if not MyPCLD or not MyPCLD.Parent then
-						MyPCLD = FindMyPCLD()
-					end
-
-					if char and MyPCLD then
-						local _, hrp, humanoid = GetHRH(char)
-						local firePlayerPart = hrp and hrp.Parent:FindFirstChild("FirePlayerPart")
-
-						if humanoid and humanoid.Health > 0 and firePlayerPart then
-							local antiKickToy = toysFolder:FindFirstChild("AntiKick")
-
-							-- 1. لو الأداة غير موجودة (انحذفت أو انسرقت)، ارسبنها فوراً وربطها!
-							if not antiKickToy then
-								if LocalPlayer:FindFirstChild("CanSpawnToy") and LocalPlayer.CanSpawnToy.Value then
-									SpawnToy(AntiKickItem, MyPCLD.CFrame * CFrame.new(AntiKickOffsetX, AntiKickOffsetY, AntiKickOffsetZ))
-									antiKickToy = toysFolder:WaitForChild(AntiKickItem, 0.5)
-									if antiKickToy then
-										antiKickToy.Name = "AntiKick"
-									end
-								end
-							end
-
-							-- 2. لو الأداة موجودة، تأكد من سلامة الـ Weld والارتباط حقها
-							if antiKickToy then
-								local stickyPart = antiKickToy:FindFirstChild("StickyPart")
-								if stickyPart then
-									local stickyWeld = stickyPart:FindFirstChild("StickyWeld")
-
-									-- لو تم قطع الـ Weld أو تم ربطه بشخص غيرك، دمره عشان يرسبن صح من جديد
-									if stickyWeld and stickyWeld.Part1 then
-										local targetPart = stickyWeld.Part1
-										if targetPart ~= firePlayerPart then
-											DestroyT(antiKickToy)
-										end
-									else
-										-- لو مافي weld، قم بإعادة ربطها فوراً بـ FireServer
-										StickyPartEvent:FireServer(stickyPart, firePlayerPart,
-											CFrame.new(AntiKickOffsetX, AntiKickOffsetY, AntiKickOffsetZ) *
-											CFrame.Angles(math.rad(AntiKickRotationX), math.rad(AntiKickRotationY), math.rad(AntiKickRotationZ)))
-									end
-								else
-									DestroyT(antiKickToy)
-								end
-
-								-- 3. فحص مالك الأداة لمنع أي تلاعب خارجي
-								local partOwner = antiKickToy:FindFirstChild("PartOwner", true)
-								if partOwner and partOwner.Value ~= LocalPlayer.Name then
-									DestroyT(antiKickToy)
-									Library:Notify({
-										Title = "Nil'e Protection",
-										Description = "Anti-Kick stolen/removed! Auto-Respawning...",
-										Time = 1,
-										BigIcon = "triangle-alert",
-									})
-								end
-							end
-						end
-					end
-				end)
-				task.wait(0.05) -- فحص سريع ومستمر يضمن بقاء أداتك موجودة ومرتبطة فيك دائماً
-			end
-		end)
-	end,
-}):AddKeyPicker("ToggleAntiKickBypass", {
-	Default = "None",
-	Callback = function()
-		local toggleState = not AntiBypassEnabled
-		if Toggles and Toggles.AntiKickBypassToggle then
-			Toggles.AntiKickBypassToggle:SetValue(toggleState)
-		end
-	end,
-})
 
 DFKT:AddToggle("AutoBreakPCLD", {
 	Text = "Break PCLD",
